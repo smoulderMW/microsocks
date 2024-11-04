@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <netinet/tcp.h>
 
 int resolve(const char *host, unsigned short port, struct addrinfo** addr) {
 	struct addrinfo hints = {
@@ -36,7 +37,7 @@ int server_waitclient(struct server *server, struct client* client) {
 	return ((client->fd = accept(server->fd, (void*)&client->addr, &clen)) == -1)*-1;
 }
 
-int server_setup(struct server *server, const char* listenip, unsigned short port) {
+int server_setup(struct server *server, const char* listenip, unsigned short port, int nodelay) {
 	struct addrinfo *ainfo = 0;
 	if(resolve(listenip, port, &ainfo)) return -1;
 	struct addrinfo* p;
@@ -46,6 +47,7 @@ int server_setup(struct server *server, const char* listenip, unsigned short por
 			continue;
 		int yes = 1;
 		setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+		setsockopt(listenfd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(int));
 		if(bind(listenfd, p->ai_addr, p->ai_addrlen) < 0) {
 			close(listenfd);
 			listenfd = -1;

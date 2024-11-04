@@ -35,6 +35,7 @@
 #include <limits.h>
 #include "server.h"
 #include "sblist.h"
+#include <netinet/tcp.h>
 
 /* timeout in microseconds on resource exhaustion to prevent excessive
    cpu usage. */
@@ -62,6 +63,7 @@
 #endif
 
 static int quiet;
+static int nodelay;
 static const char* auth_user;
 static const char* auth_pass;
 static sblist* auth_ips;
@@ -183,6 +185,7 @@ static int connect_socks_target(unsigned char *buf, size_t n, struct client *cli
 			return -EC_GENERAL_FAILURE;
 		}
 	}
+	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(int));
 	if(SOCKADDR_UNION_AF(&bind_addr) == raddr->ai_family &&
 	   bindtoip(fd, &bind_addr) == -1)
 		goto eval_errno;
@@ -383,10 +386,11 @@ static int usage(void) {
 	dprintf(2,
 		"MicroSocks SOCKS5 Server\n"
 		"------------------------\n"
-		"usage: microsocks -1 -q -i listenip -p port -u user -P pass -b bindaddr -w ips\n"
+		"usage: microsocks -1 -q -t -i listenip -p port -u user -P pass -b bindaddr -w ips\n"
 		"all arguments are optional.\n"
 		"by default listenip is 0.0.0.0 and port 1080.\n\n"
 		"option -q disables logging.\n"
+		"option -d sets TCP_NODELAY for all connect sockets.\n"
 		"option -b specifies which ip outgoing connections are bound to\n"
 		"option -w allows to specify a comma-separated whitelist of ip addresses,\n"
 		" that may use the proxy without user/pass authentication.\n"
@@ -413,7 +417,7 @@ int main(int argc, char** argv) {
 	const char *listenip = "0.0.0.0";
 	char *p, *q;
 	unsigned port = 1080;
-	while((ch = getopt(argc, argv, ":1qb:i:p:u:P:w:")) != -1) {
+	while((ch = getopt(argc, argv, ":1qdb:i:p:u:P:w:")) != -1) {
 		switch(ch) {
 			case 'w': /* fall-through */
 			case '1':
@@ -435,6 +439,9 @@ int main(int argc, char** argv) {
 				break;
 			case 'q':
 				quiet = 1;
+				break;
+			case 'd':
+				nodelay = 1;
 				break;
 			case 'b':
 				resolve_sa(optarg, 0, &bind_addr);
@@ -471,7 +478,7 @@ int main(int argc, char** argv) {
 	signal(SIGPIPE, SIG_IGN);
 	struct server s;
 	sblist *threads = sblist_new(sizeof (struct thread*), 8);
-	if(server_setup(&s, listenip, port)) {
+	if(server_setup(&s, listenip, port, nodelay)) {
 		perror("server_setup");
 		return 1;
 	}
